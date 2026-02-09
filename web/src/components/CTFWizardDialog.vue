@@ -13,6 +13,10 @@
           Setup Services
           <v-icon>mdi-cloud-outline</v-icon>
         </v-tab>
+        <v-tab value="tab_import_tags">
+          Import Tags
+          <v-icon>mdi-tag-multiple</v-icon>
+        </v-tab>
       </v-tabs>
       <v-tabs-window v-model="tab">
         <v-tabs-window-item value="tab_service">
@@ -103,6 +107,49 @@
             >
           </v-card-actions>
         </v-tabs-window-item>
+        <v-tabs-window-item value="tab_import_tags">
+          <v-card-text>
+            <div class="text-caption mb-2">
+              CSV file with columns: name, filter
+            </div>
+            <v-file-input
+              v-model="tagCsvFile"
+              label="Select CSV file"
+              accept=".csv"
+              density="compact"
+              prepend-icon="mdi-file-delimited"
+              @update:model-value="parseTagCSV"
+            ></v-file-input>
+            <v-table v-if="tagCsvRows.length > 0" density="compact">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Filter</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, i) in tagCsvRows" :key="i">
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.filter }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+            <div v-if="tagCsvError" class="text-error text-caption mt-1">
+              {{ tagCsvError }}
+            </div>
+          </v-card-text>
+          <v-card-actions v-if="tagCsvRows.length > 0">
+            <v-spacer></v-spacer>
+            <v-btn
+              variant="text"
+              :disabled="tagCsv_loading"
+              :loading="tagCsv_loading"
+              color="primary"
+              @click="importTagCSV"
+              >Import {{ tagCsvRows.length }} Tags</v-btn
+            >
+          </v-card-actions>
+        </v-tabs-window-item>
         <v-tabs-window-item value="tab_flag_regex">
           <v-form>
             <v-card-text>
@@ -163,6 +210,11 @@ const csvRows = ref<{ name: string; host: string; port: string }[]>([]);
 const csvError = ref("");
 const csv_loading = ref(false);
 
+const tagCsvFile = ref<File[]>([]);
+const tagCsvRows = ref<{ name: string; filter: string }[]>([]);
+const tagCsvError = ref("");
+const tagCsv_loading = ref(false);
+
 const tagPrefix = "tag/";
 const servicePrefix = "service/";
 const flagInName = "flag_in";
@@ -207,6 +259,11 @@ function openDialog() {
   csvRows.value = [];
   csvError.value = "";
   csv_loading.value = false;
+
+  tagCsvFile.value = [];
+  tagCsvRows.value = [];
+  tagCsvError.value = "";
+  tagCsv_loading.value = false;
 }
 
 function submitCurrent() {
@@ -312,6 +369,77 @@ function importCSV() {
     })
     .catch((err: Error) => {
       csv_loading.value = false;
+      EventBus.emit("showError", err.message);
+    });
+}
+
+function parseTagCSV(files: File[]) {
+  tagCsvRows.value = [];
+  tagCsvError.value = "";
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target?.result as string;
+    if (!text) return;
+    const lines = text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (lines.length < 2) {
+      tagCsvError.value =
+        "CSV must have a header row and at least one data row.";
+      return;
+    }
+    const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
+    const nameIdx = header.indexOf("name");
+    const filterIdx = header.indexOf("filter");
+    if (nameIdx === -1 || filterIdx === -1) {
+      tagCsvError.value = "CSV header must contain: name, filter";
+      return;
+    }
+    const rows: { name: string; filter: string }[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(",").map((c) => c.trim());
+      const name = cols[nameIdx] || "";
+      const filter = cols[filterIdx] || "";
+      if (!name || !filter) {
+        tagCsvError.value = `Invalid row ${i + 1}: name and filter must be non-empty.`;
+        return;
+      }
+      rows.push({ name, filter });
+    }
+    tagCsvRows.value = rows;
+  };
+  reader.readAsText(file);
+}
+
+function importTagCSV() {
+  tagCsv_loading.value = true;
+  Promise.allSettled(
+    tagCsvRows.value.map((row) =>
+      store.addTag(tagPrefix + row.name, row.filter, randomColor()),
+    ),
+  )
+    .then((res) => {
+      const rejected = res.filter((r) => r.status === "rejected");
+      if (rejected.length !== 0) {
+        throw new Error(
+          rejected
+            .map((r) => (r as PromiseRejectedResult).reason as string)
+            .join("; "),
+        );
+      }
+      tagCsv_loading.value = false;
+      EventBus.emit(
+        "showMessage",
+        `${tagCsvRows.value.length} tags imported.`,
+      );
+      tagCsvRows.value = [];
+      tagCsvFile.value = [];
+    })
+    .catch((err: Error) => {
+      tagCsv_loading.value = false;
       EventBus.emit("showError", err.message);
     });
 }
