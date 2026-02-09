@@ -197,7 +197,8 @@
           <thead>
             <tr>
               <th style="width: 0" class="pr-0"></th>
-              <th class="text-left pl-0">Tags</th>
+              <th class="text-left pl-0">Services</th>
+              <th class="text-left">Tags</th>
               <th class="text-left">Client</th>
               <th class="text-left">Bytes</th>
               <th class="text-left">Server</th>
@@ -239,7 +240,31 @@
                 </td>
                 <td class="pl-0">
                   <v-hover
-                    v-for="tag in stream.Tags"
+                    v-for="tag in stream.Tags.filter((t) => tagify(t, 'type') === 'service')"
+                    v-slot="{ isHovering, props }"
+                    :key="tag"
+                    ><v-chip
+                      v-bind="props"
+                      size="small"
+                      variant="flat"
+                      :color="tagColors[tag]"
+                      :style="{
+                        color: tagColors[tag]
+                          ? getContrastTextColor(tagColors[tag])
+                          : undefined,
+                      }"
+                      ><template v-if="isHovering"
+                        >{{ capitalize(tagify(tag, "type")) }}
+                        {{ tagify(tag, "name") }}</template
+                      ><template v-else>{{
+                        tagify(tag, "name")
+                      }}</template></v-chip
+                    ></v-hover
+                  >
+                </td>
+                <td>
+                  <v-hover
+                    v-for="tag in stream.Tags.filter((t) => tagify(t, 'type') !== 'service')"
                     v-slot="{ isHovering, props }"
                     :key="tag"
                     ><v-chip
