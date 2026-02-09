@@ -15,6 +15,7 @@
       @keydown.down.prevent="arrowDown"
       @keydown.tab.exact.prevent.stop="onTab"
       @keydown.esc.exact="suggestionMenuOpen = false"
+      @focus="helperMenuOpen = searchBox === ''"
     >
       <template #append-inner>
         <v-btn-toggle
@@ -85,6 +86,30 @@
         </v-list-item>
       </v-list>
     </v-menu>
+    <v-menu
+      v-model="helperMenuOpen"
+      :close-on-content-click="true"
+      absolute
+      :target="[searchBoxFieldRect.left, searchBoxFieldRect.bottom]"
+      :min-width="searchBoxFieldRect.width"
+      :max-width="searchBoxFieldRect.width"
+    >
+      <v-list density="compact">
+        <v-list-subheader>Example queries for A/D CTF</v-list-subheader>
+        <v-list-item
+          v-for="(item, index) in helperQueries"
+          :key="index"
+          @click="useHelperQuery(item.query)"
+        >
+          <v-list-item-title class="text-body-2">{{
+            item.query
+          }}</v-list-item-title>
+          <v-list-item-subtitle class="text-caption">{{
+            item.description
+          }}</v-list-item-subtitle>
+        </v-list-item>
+      </v-list>
+    </v-menu>
   </div>
 </template>
 
@@ -120,6 +145,45 @@ const suggestionSelectedIndex = ref(0);
 const suggestionMenuOpen = ref(false);
 const suggestionMenuPosX = ref(0);
 const suggestionMenuPosY = ref(0);
+const helperMenuOpen = ref(false);
+const helperQueries = [
+  {
+    query: "ltime:-5m:",
+    description: "Streams active in the last 5 minutes",
+  },
+  {
+    query: "ltime:-1h:",
+    description: "Streams active in the last hour",
+  },
+  {
+    query: 'data:"flag"',
+    description: "Streams containing flag in data",
+  },
+  {
+    query: 'cdata:"(?P<flag>FLAG\\{[^}]+\\})"',
+    description: "Capture flags sent by clients using regex",
+  },
+  {
+    query: "cbytes:0",
+    description: "Streams with no client data (scans, probes)",
+  },
+  {
+    query: "sport:1:1023",
+    description: "Streams to well-known ports (1-1023)",
+  },
+  {
+    query: "ltime:@ftime@+5m:",
+    description: "Long-lived streams (5+ minutes)",
+  },
+  {
+    query: "sort:cbytes limit:20",
+    description: "Top 20 streams by client bytes",
+  },
+  {
+    query: 'group:"@sport@"',
+    description: "Group streams by server port",
+  },
+];
 const queryTimeLimit = computed({
   get(): string | undefined {
     const ltime = analyze(searchBox.value).ltime?.[0] ?? {};
@@ -232,6 +296,7 @@ function onTab() {
 
 function onInput(updatedText: string) {
   historyIndex.value = -1;
+  helperMenuOpen.value = false;
   setSearchBox(updatedText);
   startSuggestionSearch();
 }
@@ -379,6 +444,11 @@ function search(type: string | null) {
       query: q,
     })
     .catch((e) => console.warn(e));
+}
+
+function useHelperQuery(query: string) {
+  setSearchBox(query);
+  search(null);
 }
 
 function createTag(tagType: string, tagQuery: string) {
