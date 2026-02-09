@@ -15,9 +15,18 @@
       @keydown.down.prevent="arrowDown"
       @keydown.tab.exact.prevent.stop="onTab"
       @keydown.esc.exact="suggestionMenuOpen = false"
-      @focus="searchBoxOptionsMenuOpen = true"
     >
       <template #append-inner>
+        <v-btn-toggle
+          v-model="queryTimeLimit"
+          color="primary"
+          density="compact"
+          group
+          class="mt-n2"
+        >
+          <v-btn variant="text" size="small" value="-5m:">5m</v-btn>
+          <v-btn variant="text" size="small" value="-1h:">1h</v-btn>
+        </v-btn-toggle>
         <v-menu location="bottom">
           <template #activator="{ props }">
             <v-btn size="small" icon v-bind="props" class="mt-n2"
@@ -58,27 +67,6 @@
       </template>
     </v-text-field>
     <v-menu
-      v-model="searchBoxOptionsMenuOpen"
-      :close-on-content-click="false"
-      open-on-focus
-      absolute
-      :target="[searchBoxFieldRect.left, searchBoxFieldRect.bottom]"
-      :min-width="searchBoxFieldRect.width"
-      :max-width="searchBoxFieldRect.width"
-    >
-      <v-card>
-        <v-btn-toggle
-          v-model="queryTimeLimit"
-          color="primary"
-          density="compact"
-          group
-        >
-          <v-btn variant="text" value="-5m:">Limit to last 5m</v-btn>
-          <v-btn variant="text" value="-1h:">Limit to last 1h</v-btn>
-        </v-btn-toggle>
-      </v-card>
-    </v-menu>
-    <v-menu
       v-model="suggestionMenuOpen"
       :target="[suggestionMenuPosX, suggestionMenuPosY]"
       absolute
@@ -107,7 +95,6 @@ import suggest from "@/parser/suggest";
 import analyze from "@/parser/analyze";
 import {
   computed,
-  nextTick,
   ref,
   onMounted,
   onBeforeUnmount,
@@ -131,7 +118,6 @@ const suggestionEnd = ref(0);
 const suggestionType = ref("tag");
 const suggestionSelectedIndex = ref(0);
 const suggestionMenuOpen = ref(false);
-const searchBoxOptionsMenuOpen = ref(false);
 const suggestionMenuPosX = ref(0);
 const suggestionMenuPosY = ref(0);
 const queryTimeLimit = computed({
@@ -159,14 +145,6 @@ const queryTimeLimit = computed({
       searchBox.value = `${prefix}${infix}${suffix}`;
     }
     searchBoxField.value?.focus();
-    nextTick(() => {
-      searchBoxOptionsMenuOpen.value = true;
-    }).catch((err: Error) => {
-      EventBus.emit(
-        "showError",
-        `Failed to open search box options: ${err.message}`,
-      );
-    });
   },
 });
 const tagColors = computed(() => {
@@ -280,7 +258,14 @@ function applySuggestion(index: number | null = null) {
   if (replace === null || searchBox.value === null) {
     return;
   }
-  replace = tagNameForURI(replace);
+  if (suggestionType.value === "keyword") {
+    // For keywords, append ':' so the user can start typing the value
+    if (!["and", "or", "then"].includes(replace)) {
+      replace = replace + ":";
+    }
+  } else {
+    replace = tagNameForURI(replace);
+  }
   const prefix = searchBox.value.substring(0, suggestionStart.value);
   const suffix = searchBox.value.substring(suggestionEnd.value);
   searchBox.value = prefix + replace + suffix;
@@ -313,10 +298,10 @@ function abortSuggestionSearch() {
 }
 
 function suggestionColor(type: string, item: string) {
-  if (type === "data") {
-    return "#ffffff";
+  if (type === "data" || type === "keyword") {
+    return undefined;
   }
-  return tagColors.value[type][item];
+  return tagColors.value[type]?.[item];
 }
 
 function arrowUp() {

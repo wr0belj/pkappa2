@@ -298,11 +298,11 @@ function createService() {
     });
 }
 
-function parseCSV(files: File[]) {
+function parseCSV(files: File | File[]) {
   csvRows.value = [];
   csvError.value = "";
-  if (!files || files.length === 0) return;
-  const file = files[0];
+  if (!files || (Array.isArray(files) && files.length === 0)) return;
+  const file = Array.isArray(files) ? files[0] : files;
   const reader = new FileReader();
   reader.onload = (e) => {
     const text = e.target?.result as string;
@@ -356,7 +356,7 @@ function importCSV() {
       const rejected = res.filter((r) => r.status === "rejected");
       if (rejected.length !== 0) {
         throw new Error(
-          rejected.map((r) => (r as PromiseRejectedResult).reason as string).join("; "),
+          rejected.map((r) => r.reason as string).join("; "),
         );
       }
       csv_loading.value = false;
@@ -373,11 +373,11 @@ function importCSV() {
     });
 }
 
-function parseTagCSV(files: File[]) {
+function parseTagCSV(files: File | File[]) {
   tagCsvRows.value = [];
   tagCsvError.value = "";
-  if (!files || files.length === 0) return;
-  const file = files[0];
+  if (!files || (Array.isArray(files) && files.length === 0)) return;
+  const file = Array.isArray(files) ? files[0] : files;
   const reader = new FileReader();
   reader.onload = (e) => {
     const text = e.target?.result as string;
@@ -426,7 +426,7 @@ function importTagCSV() {
       if (rejected.length !== 0) {
         throw new Error(
           rejected
-            .map((r) => (r as PromiseRejectedResult).reason as string)
+            .map((r) => r.reason as string)
             .join("; "),
         );
       }
