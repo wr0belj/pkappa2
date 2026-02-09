@@ -167,7 +167,10 @@ export function isConfig(obj: unknown): obj is Config {
         (typedObj !== null &&
             typeof typedObj === "object" ||
             typeof typedObj === "function") &&
-        typeof typedObj["AutoInsertLimitToQuery"] === "boolean"
+        typeof typedObj["AutoInsertLimitToQuery"] === "boolean" &&
+        typeof typedObj["DiscordWebhookURL"] === "string" &&
+        Array.isArray(typedObj["DiscordNotifyTags"]) &&
+        typedObj["DiscordNotifyTags"].every((e: unknown) => typeof e === "string")
     )
 }
 

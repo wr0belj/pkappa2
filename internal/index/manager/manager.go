@@ -147,7 +147,8 @@ type (
 
 		listeners map[chan Event]listener
 
-		config Config
+		config                Config
+		discordNotifiedStreams map[string]bitmask.LongBitmask
 	}
 
 	Statistics struct {
@@ -166,6 +167,8 @@ type (
 
 	Config struct {
 		AutoInsertLimitToQuery bool
+		DiscordWebhookURL     string
+		DiscordNotifyTags     []string
 	}
 
 	indexReleaser []*index.Reader
@@ -184,6 +187,7 @@ type (
 		PcapProcessorWebhookUrls []string
 		PcapOverIPEndpoints      []string
 		Config                   Config
+		DiscordNotifiedStreams   map[string][]uint64
 	}
 
 	updateTagOperationInfo struct {
@@ -236,7 +240,8 @@ func New(pcapDir, indexDir, snapshotDir, stateDir, converterDir, watchDir string
 		jobs:             make(chan func()),
 		listeners:        make(map[chan Event]listener),
 
-		config: Config{AutoInsertLimitToQuery: false},
+		config:                Config{AutoInsertLimitToQuery: false},
+		discordNotifiedStreams: make(map[string]bitmask.LongBitmask),
 	}
 
 	convertersWatcher, err := fsnotify.NewWatcher()
@@ -418,6 +423,10 @@ nextStateFile:
 		mgr.pcapProcessorWebhookUrls = s.PcapProcessorWebhookUrls
 		mgr.stateFilename = fn
 		mgr.config = s.Config
+		mgr.discordNotifiedStreams = make(map[string]bitmask.LongBitmask, len(s.DiscordNotifiedStreams))
+		for k, v := range s.DiscordNotifiedStreams {
+			mgr.discordNotifiedStreams[k] = bitmask.WrapAsLongBitmask(v)
+		}
 		pcapOverIPEndpoints = pcapOverIPEndpointsTemp
 		stateTimestamp = s.Saved
 		cachedKnownPcapData = s.Pcaps
@@ -529,6 +538,12 @@ func (mgr *Manager) saveState() error {
 			Color:      t.color,
 			Converters: t.converterNames(),
 		})
+	}
+	if len(mgr.discordNotifiedStreams) > 0 {
+		j.DiscordNotifiedStreams = make(map[string][]uint64, len(mgr.discordNotifiedStreams))
+		for k, v := range mgr.discordNotifiedStreams {
+			j.DiscordNotifiedStreams[k] = v.Mask()
+		}
 	}
 	fn := tools.MakeFilename(mgr.StateDir, "state.json")
 	f, err := os.Create(fn)
@@ -811,6 +826,7 @@ func (mgr *Manager) updateTagJob(name string, t tag, tagDetails map[string]query
 				mgr.streamsToConvert[converter.Name()].Or(t.Matches)
 			}
 			mgr.tags[name] = &t
+			mgr.checkDiscordNotification(name, &t)
 			if !(mgr.updatedStreamsDuringTaggingJob.IsZero() && mgr.resetStreamsDuringTaggingJob.IsZero() && mgr.addedStreamsDuringTaggingJob.IsZero()) {
 				mgr.invalidateTags(mgr.updatedStreamsDuringTaggingJob, mgr.resetStreamsDuringTaggingJob, mgr.addedStreamsDuringTaggingJob)
 			}
@@ -856,6 +872,31 @@ func (mgr *Manager) getIndexesCopy(start int) ([]*index.Reader, indexReleaser) {
 func (mgr *Manager) SetConfig(config Config) error {
 	c := make(chan error)
 	mgr.jobs <- func() {
+		// Initialize notified streams for newly added Discord tags
+		// so we don't flood with historical matches
+		oldNotifyTags := make(map[string]struct{}, len(mgr.config.DiscordNotifyTags))
+		for _, t := range mgr.config.DiscordNotifyTags {
+			oldNotifyTags[t] = struct{}{}
+		}
+		for _, t := range config.DiscordNotifyTags {
+			if _, existed := oldNotifyTags[t]; !existed {
+				// New tag — seed with current matches to avoid historical flood
+				if tag, ok := mgr.tags[t]; ok {
+					mgr.discordNotifiedStreams[t] = tag.Matches.Copy()
+				}
+			}
+		}
+		// Remove entries for tags no longer monitored
+		newNotifyTags := make(map[string]struct{}, len(config.DiscordNotifyTags))
+		for _, t := range config.DiscordNotifyTags {
+			newNotifyTags[t] = struct{}{}
+		}
+		for t := range mgr.discordNotifiedStreams {
+			if _, ok := newNotifyTags[t]; !ok {
+				delete(mgr.discordNotifiedStreams, t)
+			}
+		}
+
 		mgr.config = config
 
 		mgr.event(Event{

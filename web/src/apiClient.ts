@@ -101,6 +101,8 @@ export type MainStderr = string[];
 /** @see {isConfig} ts-auto-guard:type-guard */
 export type Config = {
   AutoInsertLimitToQuery: boolean;
+  DiscordWebhookURL: string;
+  DiscordNotifyTags: string[];
 };
 
 export type PcapInfo = {

@@ -45,6 +45,7 @@ watch(store, (newValue) => {
 function save() {
   store
     .updateConfig({
+      ...store.config,
       AutoInsertLimitToQuery: autoInsertLimitToQuery.value,
     })
     .catch((err: string) => {

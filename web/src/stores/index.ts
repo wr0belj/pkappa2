@@ -39,6 +39,8 @@ export const useRootStore = defineStore("root", {
       config: {
         // Default should match the ones in the backend at Manager::New
         AutoInsertLimitToQuery: false,
+        DiscordWebhookURL: "",
+        DiscordNotifyTags: [],
       },
     };
   },

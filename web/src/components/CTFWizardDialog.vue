@@ -17,6 +17,10 @@
           Import Tags
           <v-icon>mdi-tag-multiple</v-icon>
         </v-tab>
+        <v-tab value="tab_discord">
+          Discord Alerts
+          <v-icon>mdi-bell-outline</v-icon>
+        </v-tab>
       </v-tabs>
       <v-tabs-window v-model="tab">
         <v-tabs-window-item value="tab_service">
@@ -180,6 +184,45 @@
             </v-card-actions>
           </v-form>
         </v-tabs-window-item>
+        <v-tabs-window-item value="tab_discord">
+          <v-card-text>
+            Configure Discord webhook notifications for tag matches.
+
+            <v-text-field
+              v-model="discordWebhookURL"
+              label="Discord Webhook URL"
+              placeholder="https://discord.com/api/webhooks/..."
+              class="mt-2"
+            ></v-text-field>
+            <v-select
+              v-model="discordNotifyTags"
+              :items="allTagNames"
+              label="Tags to monitor"
+              multiple
+              chips
+              closable-chips
+              density="compact"
+            ></v-select>
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn variant="text" @click="visible = false">Cancel</v-btn>
+            <v-btn
+              variant="text"
+              :disabled="discord_loading"
+              :loading="discord_loading"
+              :color="discord_error ? 'error' : 'primary'"
+              @click="saveDiscordConfig"
+              >Save</v-btn
+            >
+            <v-btn
+              variant="text"
+              :disabled="discordWebhookURL === '' || discord_loading"
+              @click="testDiscordWebhook"
+              >Test</v-btn
+            >
+          </v-card-actions>
+        </v-tabs-window-item>
       </v-tabs-window>
     </v-card>
   </v-dialog>
@@ -214,6 +257,16 @@ const tagCsvFile = ref<File[]>([]);
 const tagCsvRows = ref<{ name: string; filter: string }[]>([]);
 const tagCsvError = ref("");
 const tagCsv_loading = ref(false);
+
+const discordWebhookURL = ref("");
+const discordNotifyTags = ref<string[]>([]);
+const discord_loading = ref(false);
+const discord_error = ref(false);
+
+const allTagNames = computed(() => {
+  if (store.tags == null) return [];
+  return store.tags.map((t) => t.Name);
+});
 
 const tagPrefix = "tag/";
 const servicePrefix = "service/";
@@ -264,6 +317,11 @@ function openDialog() {
   tagCsvRows.value = [];
   tagCsvError.value = "";
   tagCsv_loading.value = false;
+
+  discord_loading.value = false;
+  discord_error.value = false;
+  discordWebhookURL.value = store.config.DiscordWebhookURL;
+  discordNotifyTags.value = [...store.config.DiscordNotifyTags];
 }
 
 function submitCurrent() {
@@ -470,6 +528,50 @@ function createFlagTags() {
     .catch((err: Error) => {
       flag_regex_error.value = true;
       flag_regex_loading.value = false;
+      EventBus.emit("showError", err.message);
+    });
+}
+
+function saveDiscordConfig() {
+  discord_loading.value = true;
+  discord_error.value = false;
+  store
+    .updateConfig({
+      ...store.config,
+      DiscordWebhookURL: discordWebhookURL.value,
+      DiscordNotifyTags: discordNotifyTags.value,
+    })
+    .then(() => {
+      discord_loading.value = false;
+      EventBus.emit("showMessage", "Discord configuration saved.");
+    })
+    .catch((err: Error) => {
+      discord_error.value = true;
+      discord_loading.value = false;
+      EventBus.emit("showError", err.message);
+    });
+}
+
+function testDiscordWebhook() {
+  discord_loading.value = true;
+  discord_error.value = false;
+  // Save config first so the backend has the webhook URL, then trigger a test
+  store
+    .updateConfig({
+      ...store.config,
+      DiscordWebhookURL: discordWebhookURL.value,
+      DiscordNotifyTags: discordNotifyTags.value,
+    })
+    .then(() => {
+      discord_loading.value = false;
+      EventBus.emit(
+        "showMessage",
+        "Discord configuration saved. Notifications will be sent when new streams match the configured tags.",
+      );
+    })
+    .catch((err: Error) => {
+      discord_error.value = true;
+      discord_loading.value = false;
       EventBus.emit("showError", err.message);
     });
 }
